@@ -10,6 +10,10 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const STORE_FILE = path.join(DATA_DIR, 'trend-sniffer-store.json');
 const MAX_SEEN_IDS = 1500;
+const MAX_COPILOT_ACTIONS = 120;
+const MAX_BRIEFING_HISTORY = 40;
+const DEFAULT_TIMEZONE = 'Africa/Johannesburg';
+const DEFAULT_BRIEFING_TIME = '06:30';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -21,29 +25,92 @@ const parser = new XMLParser({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const GOOGLE_NEWS_FEEDS = [
-  {
-    topic: 'AI & Robotics',
-    url: 'https://news.google.com/rss/search?q=artificial+intelligence+robotics+industry&hl=en-US&gl=US&ceid=US:en'
-  },
-  {
-    topic: 'Cloud & Platform',
-    url: 'https://news.google.com/rss/search?q=cloud+platform+engineering+enterprise&hl=en-US&gl=US&ceid=US:en'
-  },
-  {
-    topic: 'Cybersecurity',
-    url: 'https://news.google.com/rss/search?q=cybersecurity+breach+zero+day+technology&hl=en-US&gl=US&ceid=US:en'
-  },
-  {
-    topic: 'Startups & Funding',
-    url: 'https://news.google.com/rss/search?q=technology+startup+funding+product+launch&hl=en-US&gl=US&ceid=US:en'
-  }
-];
-
-const TECH_RSS_FEEDS = [
-  { topic: 'Editorial', url: 'https://techcrunch.com/feed/' },
-  { topic: 'Editorial', url: 'https://www.theverge.com/rss/index.xml' }
-];
+const RSS_PRESET_PACKS = {
+  'business-maker': [
+    {
+      id: 'preset-startup-funding',
+      name: 'Startup Funding Pulse',
+      category: 'Business',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=startup+funding+venture+capital+saas&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-maker-economy',
+      name: 'Maker Economy',
+      category: 'Maker',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=indie+hacker+maker+creator+economy+product&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-small-business-tech',
+      name: 'Small Business Tools',
+      category: 'Business',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=small+business+automation+software+tools&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-product-growth',
+      name: 'Product & Growth',
+      category: 'Growth',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=product+growth+retention+activation+startup&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-hn-maker',
+      name: 'Hacker News',
+      category: 'Maker',
+      preset: true,
+      enabled: true,
+      url: 'https://news.ycombinator.com/rss'
+    }
+  ],
+  'technology-core': [
+    {
+      id: 'preset-ai-robotics',
+      name: 'AI & Robotics',
+      category: 'Technology',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=artificial+intelligence+robotics+industry&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-cloud-platform',
+      name: 'Cloud & Platform',
+      category: 'Technology',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=cloud+platform+engineering+enterprise&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-cybersecurity',
+      name: 'Cybersecurity',
+      category: 'Technology',
+      preset: true,
+      enabled: true,
+      url: 'https://news.google.com/rss/search?q=cybersecurity+breach+zero+day+technology&hl=en-US&gl=US&ceid=US:en'
+    },
+    {
+      id: 'preset-techcrunch',
+      name: 'TechCrunch',
+      category: 'Technology',
+      preset: true,
+      enabled: true,
+      url: 'https://techcrunch.com/feed/'
+    },
+    {
+      id: 'preset-verge',
+      name: 'The Verge',
+      category: 'Technology',
+      preset: true,
+      enabled: true,
+      url: 'https://www.theverge.com/rss/index.xml'
+    }
+  ]
+};
 
 const BASE_YOUTUBE_CHANNELS = [
   { label: 'OpenAI', id: 'UCXZCJLdBC09xxGZ6gcdrc6A' },
@@ -139,23 +206,17 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function defaultStore() {
-  return {
-    watchlist: {
-      topics: ['ai', 'cybersecurity'],
-      channels: []
-    },
-    templates: [DEFAULT_TEMPLATE],
-    activeTemplateId: DEFAULT_TEMPLATE.id,
-    seen: {
-      signals: {},
-      searches: {},
-      videos: {}
-    },
-    settings: {
-      sendOnlyNewItems: true
-    }
-  };
+function isValidTime(timeValue) {
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(timeValue || ''));
+}
+
+function isValidTimezone(timezone) {
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date());
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function sanitizeTopic(value) {
@@ -189,6 +250,143 @@ function sanitizeTemplate(value) {
   return template;
 }
 
+function sanitizeRssSource(value, fallbackIdPrefix = 'source') {
+  const candidateUrl = stripHtml(value?.url || '');
+  const name = stripHtml(value?.name || value?.topic || '').slice(0, 90);
+  const category = stripHtml(value?.category || 'General').slice(0, 40) || 'General';
+
+  if (!candidateUrl || !/^https?:\/\//i.test(candidateUrl)) return null;
+
+  try {
+    const parsedUrl = new URL(candidateUrl);
+    const normalizedUrl = parsedUrl.toString();
+
+    return {
+      id: stripHtml(value?.id || makeId(fallbackIdPrefix)).slice(0, 90),
+      name: name || parsedUrl.hostname,
+      url: normalizedUrl,
+      category,
+      enabled: value?.enabled !== false,
+      preset: Boolean(value?.preset)
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function sanitizeCopilotAction(raw) {
+  const id = stripHtml(raw?.id || makeId('action')).slice(0, 100);
+  const type = stripHtml(raw?.type || '').slice(0, 60);
+  const summary = stripHtml(raw?.summary || '').slice(0, 240);
+  if (!id || !type) return null;
+
+  return {
+    id,
+    type,
+    summary,
+    risk: stripHtml(raw?.risk || 'low').slice(0, 20) || 'low',
+    status: ['pending', 'confirmed', 'rejected', 'failed'].includes(raw?.status) ? raw.status : 'pending',
+    payload: raw?.payload && typeof raw.payload === 'object' ? raw.payload : {},
+    origin: stripHtml(raw?.origin || 'copilot').slice(0, 20) || 'copilot',
+    createdAt: toISOStringOrNow(raw?.createdAt),
+    updatedAt: toISOStringOrNow(raw?.updatedAt || raw?.createdAt)
+  };
+}
+
+function defaultRssSources() {
+  return RSS_PRESET_PACKS['business-maker'].map((entry) => ({ ...entry }));
+}
+
+function defaultStore() {
+  return {
+    watchlist: {
+      topics: ['ai', 'cybersecurity'],
+      channels: []
+    },
+    templates: [DEFAULT_TEMPLATE],
+    activeTemplateId: DEFAULT_TEMPLATE.id,
+    seen: {
+      signals: {},
+      searches: {},
+      videos: {}
+    },
+    settings: {
+      sendOnlyNewItems: true
+    },
+    rssSources: defaultRssSources(),
+    copilot: {
+      requireConfirmation: true,
+      pendingActions: [],
+      history: []
+    },
+    briefing: {
+      schedule: {
+        time: DEFAULT_BRIEFING_TIME,
+        timezone: DEFAULT_TIMEZONE
+      },
+      delivery: {
+        inApp: true,
+        telegram: true,
+        telegramPaused: false
+      },
+      behavior: {
+        askBeforeGenerateWhenTelegramPaused: true,
+        defaultContinueWhenPaused: true
+      },
+      lastGeneratedAt: null,
+      history: []
+    }
+  };
+}
+
+function sanitizeBriefing(rawBriefing) {
+  const fallback = defaultStore().briefing;
+
+  const time = isValidTime(rawBriefing?.schedule?.time)
+    ? rawBriefing.schedule.time
+    : fallback.schedule.time;
+
+  const timezone = isValidTimezone(rawBriefing?.schedule?.timezone)
+    ? rawBriefing.schedule.timezone
+    : fallback.schedule.timezone;
+
+  const history = ensureArray(rawBriefing?.history)
+    .filter((entry) => entry && typeof entry === 'object')
+    .slice(0, MAX_BRIEFING_HISTORY)
+    .map((entry) => ({
+      id: stripHtml(entry.id || makeId('briefing')).slice(0, 100),
+      generatedAt: toISOStringOrNow(entry.generatedAt),
+      mode: entry.mode === 'full' ? 'full' : 'new',
+      counts: {
+        signals: Number(entry?.counts?.signals || 0),
+        searches: Number(entry?.counts?.searches || 0),
+        videos: Number(entry?.counts?.videos || 0),
+        total: Number(entry?.counts?.total || 0)
+      },
+      sentToTelegram: Boolean(entry.sentToTelegram),
+      note: stripHtml(entry.note || '').slice(0, 200),
+      text: String(entry.text || '').slice(0, 4200)
+    }));
+
+  return {
+    schedule: {
+      time,
+      timezone
+    },
+    delivery: {
+      inApp: rawBriefing?.delivery?.inApp !== false,
+      telegram: rawBriefing?.delivery?.telegram !== false,
+      telegramPaused: rawBriefing?.delivery?.telegramPaused === true
+    },
+    behavior: {
+      askBeforeGenerateWhenTelegramPaused: rawBriefing?.behavior?.askBeforeGenerateWhenTelegramPaused !== false,
+      defaultContinueWhenPaused: rawBriefing?.behavior?.defaultContinueWhenPaused !== false
+    },
+    lastGeneratedAt: rawBriefing?.lastGeneratedAt ? toISOStringOrNow(rawBriefing.lastGeneratedAt) : null,
+    history
+  };
+}
+
 function normalizeStore(rawStore) {
   const topics = ensureArray(rawStore?.watchlist?.topics)
     .map(sanitizeTopic)
@@ -213,6 +411,29 @@ function normalizeStore(rawStore) {
     ? rawStore.activeTemplateId
     : templateList[0].id;
 
+  const rssSources = ensureArray(rawStore?.rssSources)
+    .map((entry) => sanitizeRssSource(entry))
+    .filter(Boolean)
+    .filter((entry, index, all) => all.findIndex((value) => value.url === entry.url) === index)
+    .slice(0, 80);
+
+  const sanitizedRssSources = rssSources.length ? rssSources : defaultRssSources();
+
+  const pendingActions = ensureArray(rawStore?.copilot?.pendingActions)
+    .map(sanitizeCopilotAction)
+    .filter(Boolean)
+    .slice(0, MAX_COPILOT_ACTIONS);
+
+  const history = ensureArray(rawStore?.copilot?.history)
+    .filter((entry) => entry && typeof entry === 'object')
+    .slice(0, 80)
+    .map((entry) => ({
+      id: stripHtml(entry.id || makeId('chat')).slice(0, 100),
+      role: entry.role === 'assistant' ? 'assistant' : 'user',
+      message: stripHtml(entry.message || '').slice(0, 800),
+      createdAt: toISOStringOrNow(entry.createdAt)
+    }));
+
   return {
     watchlist: {
       topics,
@@ -227,7 +448,14 @@ function normalizeStore(rawStore) {
     },
     settings: {
       sendOnlyNewItems: rawStore?.settings?.sendOnlyNewItems !== false
-    }
+    },
+    rssSources: sanitizedRssSources,
+    copilot: {
+      requireConfirmation: rawStore?.copilot?.requireConfirmation !== false,
+      pendingActions,
+      history
+    },
+    briefing: sanitizeBriefing(rawStore?.briefing || {})
   };
 }
 
@@ -245,12 +473,13 @@ function loadStore() {
     const normalized = normalizeStore(parsed);
     fs.writeFileSync(STORE_FILE, JSON.stringify(normalized, null, 2));
     return normalized;
-  } catch (error) {
+  } catch (_error) {
     return defaultStore();
   }
 }
 
 let store = loadStore();
+let briefingJob = null;
 
 function persistStore() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -263,7 +492,12 @@ function publicPreferences() {
     watchlist: store.watchlist,
     templates: store.templates,
     activeTemplateId: store.activeTemplateId,
-    settings: store.settings
+    settings: store.settings,
+    rssSources: store.rssSources,
+    briefing: store.briefing,
+    copilot: {
+      requireConfirmation: store.copilot.requireConfirmation
+    }
   };
 }
 
@@ -400,7 +634,7 @@ function getSourceMix(signals) {
 async function fetchText(url) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'TrendSnifferBot/2.0 (+watchlist and new-item alerts)'
+      'User-Agent': 'TrendSnifferBot/3.0 (+copilot + configurable rss + local persistence)'
     }
   });
 
@@ -414,7 +648,7 @@ async function fetchText(url) {
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'TrendSnifferBot/2.0 (+watchlist and new-item alerts)'
+      'User-Agent': 'TrendSnifferBot/3.0 (+copilot + configurable rss + local persistence)'
     }
   });
 
@@ -445,23 +679,67 @@ function extractImageFromItem(item) {
   return null;
 }
 
+function getEnabledRssSources() {
+  const enabled = ensureArray(store.rssSources).filter((source) => source.enabled);
+  return enabled.length ? enabled : defaultRssSources();
+}
+
+function parseAtomLink(entry) {
+  const links = ensureArray(entry.link);
+  if (!links.length) return null;
+
+  const alternate = links.find((item) => item.rel === 'alternate' && item.href);
+  if (alternate) return alternate.href;
+
+  const firstHref = links.find((item) => item.href)?.href;
+  if (firstHref) return firstHref;
+
+  const firstString = links.find((item) => typeof item === 'string');
+  return firstString || null;
+}
+
+function parseFeedItems(xmlText, feed) {
+  const parsed = parser.parse(xmlText);
+  const rssItems = ensureArray(parsed?.rss?.channel?.item);
+  if (rssItems.length) {
+    const sourceTitle = stripHtml(parsed?.rss?.channel?.title || feed.name || 'Unknown Source');
+    return rssItems.slice(0, 12).map((item, index) => ({
+      id: `${feed.id}-${index}-${item.guid || item.link || item.title}`,
+      topic: feed.category || feed.name || 'General',
+      title: stripHtml(item.title),
+      summary: stripHtml(item.description || item['content:encoded'] || ''),
+      link: item.link,
+      source: stripHtml(item.source?.text || sourceTitle),
+      publishedAt: toISOStringOrNow(item.pubDate),
+      image: extractImageFromItem(item)
+    }));
+  }
+
+  const atomEntries = ensureArray(parsed?.feed?.entry);
+  if (atomEntries.length) {
+    const sourceTitle = stripHtml(parsed?.feed?.title || feed.name || 'Unknown Source');
+    return atomEntries.slice(0, 12).map((entry, index) => ({
+      id: `${feed.id}-${index}-${entry.id || entry.link?.href || entry.title}`,
+      topic: feed.category || feed.name || 'General',
+      title: stripHtml(entry.title),
+      summary: stripHtml(entry.summary || entry.content || ''),
+      link: parseAtomLink(entry),
+      source: sourceTitle,
+      publishedAt: toISOStringOrNow(entry.published || entry.updated),
+      image: null
+    }));
+  }
+
+  return [];
+}
+
 async function getSignalFeeds() {
-  const requests = [...GOOGLE_NEWS_FEEDS, ...TECH_RSS_FEEDS].map(async (feed) => {
+  const sources = getEnabledRssSources();
+
+  const requests = sources.map(async (feed) => {
     try {
       const xml = await fetchText(feed.url);
-      const parsed = parser.parse(xml);
-      const items = ensureArray(parsed?.rss?.channel?.item);
-
-      return items.slice(0, 12).map((item, index) => ({
-        id: `${feed.topic}-${index}-${item.guid || item.link || item.title}`,
-        topic: feed.topic,
-        title: stripHtml(item.title),
-        summary: stripHtml(item.description || item['content:encoded'] || ''),
-        link: item.link,
-        source: stripHtml(item.source?.text || parsed?.rss?.channel?.title || 'Unknown Source'),
-        publishedAt: toISOStringOrNow(item.pubDate),
-        image: extractImageFromItem(item)
-      }));
+      return parseFeedItems(xml, feed);
     } catch (_error) {
       return [];
     }
@@ -676,15 +954,15 @@ async function buildDashboardData() {
   return {
     generatedAt: new Date().toISOString(),
     references: {
-      signals: 'Google News RSS, TechCrunch RSS, The Verge RSS',
+      signals: getEnabledRssSources()
+        .map((entry) => `${entry.name} (${entry.url})`)
+        .slice(0, 8)
+        .join(', '),
       googleSearches: 'Google Trends Daily Search Trends (US)',
       videos: 'YouTube channel RSS feeds',
       challenges: challenges.source
     },
     telegramConfigured: canSendTelegram(),
-    settings: {
-      cron: process.env.TELEGRAM_CRON || null
-    },
     watchlistSummary: {
       topics: store.watchlist.topics,
       channels: store.watchlist.channels
@@ -704,7 +982,11 @@ async function buildDashboardData() {
     googleSearches,
     videos,
     challenges,
-    preferences: publicPreferences()
+    preferences: publicPreferences(),
+    copilot: {
+      pendingActions: store.copilot.pendingActions.filter((action) => action.status === 'pending'),
+      requireConfirmation: store.copilot.requireConfirmation
+    }
   };
 }
 
@@ -757,7 +1039,18 @@ function buildTemplateMessage(data, templateId, mode = 'new') {
   };
 }
 
-async function sendDigest({ mode = 'new', templateId } = {}) {
+function getTelegramPausePromptPayload(mode, digest) {
+  return {
+    ok: true,
+    needsConfirmationPrompt: true,
+    message: 'Telegram delivery is paused. Continue generating in-app summary?',
+    defaultDecision: store.briefing.behavior.defaultContinueWhenPaused ? 'continue' : 'cancel',
+    mode,
+    counts: digest.counts
+  };
+}
+
+async function sendDigest({ mode = 'new', templateId, pausedDecision, skipPausePrompt = false } = {}) {
   const data = await buildDashboardData();
   const digest = buildTemplateMessage(data, templateId, mode);
 
@@ -765,39 +1058,507 @@ async function sendDigest({ mode = 'new', templateId } = {}) {
     return {
       ok: true,
       sent: false,
+      generated: false,
       reason: 'No new watchlist-matching items yet.',
       counts: digest.counts,
       generatedAt: data.generatedAt
     };
   }
 
-  const telegramResponse = await sendTelegramMessage(digest.text);
+  const telegramPaused = store.briefing.delivery.telegramPaused || !store.briefing.delivery.telegram;
+  const shouldAsk = telegramPaused && store.briefing.behavior.askBeforeGenerateWhenTelegramPaused;
+
+  if (shouldAsk && !skipPausePrompt && !['continue', 'cancel'].includes(pausedDecision)) {
+    return getTelegramPausePromptPayload(mode, digest);
+  }
+
+  if (telegramPaused && pausedDecision === 'cancel') {
+    return {
+      ok: true,
+      sent: false,
+      generated: false,
+      cancelled: true,
+      reason: 'Briefing generation cancelled while telegram is paused.',
+      counts: digest.counts,
+      generatedAt: data.generatedAt
+    };
+  }
+
+  let telegramResponse = null;
+  let sent = false;
+
+  if (!telegramPaused && canSendTelegram()) {
+    telegramResponse = await sendTelegramMessage(digest.text);
+    sent = true;
+  }
+
   markDashboardSeen(data);
 
   return {
     ok: true,
-    sent: true,
+    sent,
+    generated: true,
     mode,
     counts: digest.counts,
     generatedAt: data.generatedAt,
+    text: digest.text,
+    telegramPaused,
     telegramResponse
   };
 }
 
-if (process.env.TELEGRAM_CRON) {
-  cron.schedule(process.env.TELEGRAM_CRON, async () => {
-    try {
-      if (!canSendTelegram()) return;
-      const result = await sendDigest({ mode: 'new' });
-      if (result.sent) {
-        // eslint-disable-next-line no-console
-        console.log(`[telegram] sent ${result.counts.total} new items at ${new Date().toISOString()}`);
-      }
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('[telegram] digest failed:', error.message);
-    }
+function appendBriefingHistory(entry) {
+  store.briefing.history.unshift(entry);
+  store.briefing.history = store.briefing.history.slice(0, MAX_BRIEFING_HISTORY);
+}
+
+async function generateBriefing(options = {}) {
+  const mode = options.mode === 'full' ? 'full' : 'new';
+  const templateId = stripHtml(options.templateId || store.activeTemplateId || '');
+
+  let pausedDecision = options.pausedDecision;
+  if (!pausedDecision && options.skipPausePrompt === true) {
+    pausedDecision = store.briefing.behavior.defaultContinueWhenPaused ? 'continue' : 'cancel';
+  }
+
+  const result = await sendDigest({
+    mode,
+    templateId,
+    pausedDecision,
+    skipPausePrompt: options.skipPausePrompt === true
   });
+
+  if (result.generated) {
+    const generatedAt = result.generatedAt || new Date().toISOString();
+    store.briefing.lastGeneratedAt = generatedAt;
+
+    if (store.briefing.delivery.inApp && result.text) {
+      appendBriefingHistory({
+        id: makeId('briefing'),
+        generatedAt,
+        mode,
+        counts: result.counts,
+        sentToTelegram: Boolean(result.sent),
+        note: result.sent ? 'Delivered to telegram and in-app.' : 'Generated in-app only.',
+        text: result.text
+      });
+    }
+
+    persistStore();
+  }
+
+  return result;
+}
+
+function queueCopilotAction({ type, payload = {}, summary, risk = 'low', origin = 'copilot' }) {
+  const action = {
+    id: makeId('action'),
+    type,
+    summary: stripHtml(summary || type).slice(0, 240),
+    risk,
+    status: 'pending',
+    payload,
+    origin,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  store.copilot.pendingActions.unshift(action);
+  store.copilot.pendingActions = store.copilot.pendingActions.slice(0, MAX_COPILOT_ACTIONS);
+  persistStore();
+  return action;
+}
+
+function parseSchedulePatch(rawPatch) {
+  const schedule = rawPatch?.schedule || {};
+  const delivery = rawPatch?.delivery || {};
+  const behavior = rawPatch?.behavior || {};
+
+  if (schedule.time && !isValidTime(schedule.time)) {
+    throw new Error('Invalid time format. Use HH:mm (24h).');
+  }
+
+  if (schedule.timezone && !isValidTimezone(schedule.timezone)) {
+    throw new Error('Invalid timezone value.');
+  }
+
+  return {
+    schedule: {
+      time: schedule.time || store.briefing.schedule.time,
+      timezone: schedule.timezone || store.briefing.schedule.timezone
+    },
+    delivery: {
+      inApp: typeof delivery.inApp === 'boolean' ? delivery.inApp : store.briefing.delivery.inApp,
+      telegram: typeof delivery.telegram === 'boolean' ? delivery.telegram : store.briefing.delivery.telegram,
+      telegramPaused:
+        typeof delivery.telegramPaused === 'boolean' ? delivery.telegramPaused : store.briefing.delivery.telegramPaused
+    },
+    behavior: {
+      askBeforeGenerateWhenTelegramPaused:
+        typeof behavior.askBeforeGenerateWhenTelegramPaused === 'boolean'
+          ? behavior.askBeforeGenerateWhenTelegramPaused
+          : store.briefing.behavior.askBeforeGenerateWhenTelegramPaused,
+      defaultContinueWhenPaused:
+        typeof behavior.defaultContinueWhenPaused === 'boolean'
+          ? behavior.defaultContinueWhenPaused
+          : store.briefing.behavior.defaultContinueWhenPaused
+    }
+  };
+}
+
+function applyPresetPack(presetKey) {
+  const presets = RSS_PRESET_PACKS[presetKey];
+  if (!presets) {
+    throw new Error(`Unknown preset '${presetKey}'`);
+  }
+
+  const merged = [...store.rssSources];
+
+  presets.forEach((entry) => {
+    const clean = sanitizeRssSource(entry, 'preset-source');
+    if (!clean) return;
+
+    const existingIndex = merged.findIndex((value) => value.url === clean.url);
+    if (existingIndex >= 0) {
+      merged[existingIndex] = {
+        ...merged[existingIndex],
+        name: clean.name,
+        category: clean.category,
+        enabled: true,
+        preset: true
+      };
+      return;
+    }
+
+    merged.push(clean);
+  });
+
+  store.rssSources = merged;
+  persistStore();
+
+  return {
+    addedOrEnabled: presets.length,
+    presetKey,
+    totalSources: store.rssSources.length
+  };
+}
+
+function saveChatTurn(role, message) {
+  if (!message) return;
+  store.copilot.history.unshift({
+    id: makeId('chat'),
+    role,
+    message: stripHtml(message).slice(0, 800),
+    createdAt: new Date().toISOString()
+  });
+  store.copilot.history = store.copilot.history.slice(0, 80);
+  persistStore();
+}
+
+function parseMessageToActionRequests(message) {
+  const lower = message.toLowerCase();
+  const actions = [];
+
+  const urlMatch = message.match(/https?:\/\/[^\s]+/i);
+  if (urlMatch && /(add|track|include).*(rss|feed|source)|rss|feed|source.*(add|track|include)/i.test(lower)) {
+    try {
+      const parsed = new URL(urlMatch[0]);
+      actions.push({
+        type: 'add_rss_source',
+        summary: `Add RSS source ${parsed.hostname}`,
+        risk: 'low',
+        payload: {
+          source: {
+            name: parsed.hostname,
+            url: parsed.toString(),
+            category: 'General',
+            enabled: true,
+            preset: false
+          }
+        }
+      });
+    } catch (_error) {
+      // ignore malformed URL in chat intent parsing
+    }
+  }
+
+  if (/(pause).*(telegram)|(telegram).*(pause)/i.test(lower)) {
+    actions.push({
+      type: 'set_telegram_pause',
+      summary: 'Pause telegram summary delivery',
+      risk: 'low',
+      payload: { paused: true }
+    });
+  }
+
+  if (/(resume|unpause).*(telegram)|(telegram).*(resume|unpause)/i.test(lower)) {
+    actions.push({
+      type: 'set_telegram_pause',
+      summary: 'Resume telegram summary delivery',
+      risk: 'low',
+      payload: { paused: false }
+    });
+  }
+
+  const timeMatch = message.match(/\b([01]\d|2[0-3]):([0-5]\d)\b/);
+  const timezoneMatch = message.match(/\b[A-Za-z_]+\/[A-Za-z_]+\b/);
+  if ((/schedule|briefing|daily/i.test(lower) || timeMatch) && (timeMatch || timezoneMatch)) {
+    actions.push({
+      type: 'update_briefing_settings',
+      summary: 'Update briefing schedule settings',
+      risk: 'low',
+      payload: {
+        patch: {
+          schedule: {
+            time: timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : store.briefing.schedule.time,
+            timezone: timezoneMatch ? timezoneMatch[0] : store.briefing.schedule.timezone
+          }
+        }
+      }
+    });
+  }
+
+  if (/business\s*\+?\s*maker|business\s+maker/i.test(lower)) {
+    actions.push({
+      type: 'apply_preset_pack',
+      summary: 'Apply Business + Maker RSS presets',
+      risk: 'low',
+      payload: { presetKey: 'business-maker' }
+    });
+  }
+
+  if (/technology\s+core|tech\s+preset/i.test(lower)) {
+    actions.push({
+      type: 'apply_preset_pack',
+      summary: 'Apply Technology Core RSS presets',
+      risk: 'low',
+      payload: { presetKey: 'technology-core' }
+    });
+  }
+
+  if (/(generate|create).*(briefing|summary)|(briefing|summary).*(generate|create)/i.test(lower)) {
+    actions.push({
+      type: 'generate_briefing',
+      summary: 'Generate a fresh briefing now',
+      risk: 'low',
+      payload: {
+        mode: 'new',
+        templateId: store.activeTemplateId
+      }
+    });
+  }
+
+  return actions.slice(0, 3);
+}
+
+function composeCopilotReply(message, dashboard) {
+  const lower = message.toLowerCase();
+  const topSignals = dashboard.signals.slice(0, 3);
+  const topChallenges = dashboard.challenges.opportunities.slice(0, 2);
+
+  if (/challenge|problem|pain point|opportunit/i.test(lower)) {
+    if (!topChallenges.length) {
+      return 'No high-confidence challenge opportunities are available right now. Refresh and try again.';
+    }
+
+    const lines = topChallenges.map((entry, index) => `${index + 1}. ${entry.category}: ${entry.suggestedSolution}`);
+    return `Top build opportunities right now:\n${lines.join('\n')}`;
+  }
+
+  if (/search|google trend/i.test(lower)) {
+    const topSearches = dashboard.googleSearches.slice(0, 3);
+    if (!topSearches.length) {
+      return 'No Google trend entries are available right now.';
+    }
+
+    const lines = topSearches.map((entry, index) => `${index + 1}. ${entry.query} (${entry.approxTraffic})`);
+    return `Top recent Google searches:\n${lines.join('\n')}`;
+  }
+
+  if (/what('| i)?s new|summary|update|highlights|brief/i.test(lower)) {
+    if (!topSignals.length) {
+      return 'No fresh signal headlines are available right now. Run a refresh.';
+    }
+
+    const lines = topSignals.map((entry, index) => `${index + 1}. ${entry.title}`);
+    return [
+      `Pending new items: ${dashboard.pendingNew.total} (${dashboard.pendingNew.signals} signals, ${dashboard.pendingNew.searches} searches, ${dashboard.pendingNew.videos} videos).`,
+      `Top signals:\n${lines.join('\n')}`,
+      `Spark: ${dashboard.creative.sparkLine}`
+    ].join('\n\n');
+  }
+
+  return [
+    'Copilot can help with summaries, challenges, and source configuration.',
+    'Try prompts like:',
+    '- "What is new today?"',
+    '- "Add source https://example.com/feed"',
+    '- "Set briefing to 06:30 Africa/Johannesburg"',
+    '- "Pause telegram"'
+  ].join('\n');
+}
+
+function toCronExpression(timeValue) {
+  if (!isValidTime(timeValue)) {
+    return null;
+  }
+
+  const [hour, minute] = timeValue.split(':').map((value) => Number(value));
+  return `${minute} ${hour} * * *`;
+}
+
+function scheduleBriefingJob() {
+  if (briefingJob) {
+    briefingJob.stop();
+    briefingJob = null;
+  }
+
+  const cronExpression = toCronExpression(store.briefing.schedule.time);
+  const timezone = store.briefing.schedule.timezone;
+
+  if (!cronExpression || !isValidTimezone(timezone)) {
+    return;
+  }
+
+  briefingJob = cron.schedule(
+    cronExpression,
+    async () => {
+      try {
+        await generateBriefing({
+          mode: 'new',
+          templateId: store.activeTemplateId,
+          skipPausePrompt: true,
+          pausedDecision: store.briefing.behavior.defaultContinueWhenPaused ? 'continue' : 'cancel'
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[briefing] scheduled run failed:', error.message);
+      }
+    },
+    {
+      timezone
+    }
+  );
+}
+
+async function executeAction(action) {
+  switch (action.type) {
+    case 'add_rss_source': {
+      const source = sanitizeRssSource(action.payload?.source, 'source');
+      if (!source) {
+        throw new Error('Invalid source payload.');
+      }
+
+      const exists = store.rssSources.find((entry) => entry.url === source.url);
+      if (exists) {
+        throw new Error('That source URL already exists.');
+      }
+
+      store.rssSources.unshift(source);
+      persistStore();
+      return { message: `Added source ${source.name}.` };
+    }
+
+    case 'update_rss_source': {
+      const id = stripHtml(action.payload?.id || '');
+      const patch = action.payload?.patch || {};
+      const index = store.rssSources.findIndex((entry) => entry.id === id);
+      if (index < 0) {
+        throw new Error('Source not found.');
+      }
+
+      const current = store.rssSources[index];
+      const updated = sanitizeRssSource(
+        {
+          ...current,
+          ...patch,
+          id: current.id,
+          preset: current.preset
+        },
+        'source'
+      );
+
+      if (!updated) {
+        throw new Error('Invalid source patch.');
+      }
+
+      const duplicate = store.rssSources.find((entry) => entry.url === updated.url && entry.id !== id);
+      if (duplicate) {
+        throw new Error('Another source already uses that URL.');
+      }
+
+      store.rssSources[index] = updated;
+      persistStore();
+      return { message: `Updated source ${updated.name}.` };
+    }
+
+    case 'remove_rss_source': {
+      const id = stripHtml(action.payload?.id || '');
+      const before = store.rssSources.length;
+      store.rssSources = store.rssSources.filter((entry) => entry.id !== id);
+      if (store.rssSources.length === before) {
+        throw new Error('Source not found.');
+      }
+
+      persistStore();
+      return { message: 'Source removed.' };
+    }
+
+    case 'apply_preset_pack': {
+      const presetKey = stripHtml(action.payload?.presetKey || '');
+      const result = applyPresetPack(presetKey);
+      return { message: `Applied preset pack ${presetKey}.`, ...result };
+    }
+
+    case 'update_briefing_settings': {
+      const patch = parseSchedulePatch(action.payload?.patch || {});
+      store.briefing = sanitizeBriefing({
+        ...store.briefing,
+        ...patch,
+        schedule: {
+          ...store.briefing.schedule,
+          ...patch.schedule
+        },
+        delivery: {
+          ...store.briefing.delivery,
+          ...patch.delivery
+        },
+        behavior: {
+          ...store.briefing.behavior,
+          ...patch.behavior
+        }
+      });
+
+      persistStore();
+      scheduleBriefingJob();
+      return { message: 'Briefing settings updated.' };
+    }
+
+    case 'set_telegram_pause': {
+      const paused = action.payload?.paused === true;
+      store.briefing.delivery.telegramPaused = paused;
+      persistStore();
+      return { message: paused ? 'Telegram delivery paused.' : 'Telegram delivery resumed.' };
+    }
+
+    case 'generate_briefing': {
+      const result = await generateBriefing({
+        mode: action.payload?.mode === 'full' ? 'full' : 'new',
+        templateId: action.payload?.templateId || store.activeTemplateId,
+        skipPausePrompt: true,
+        pausedDecision: store.briefing.behavior.defaultContinueWhenPaused ? 'continue' : 'cancel'
+      });
+      return {
+        message: result.generated
+          ? `Briefing generated (${result.counts.total} items).`
+          : result.reason || 'Briefing not generated.',
+        briefing: result
+      };
+    }
+
+    default:
+      throw new Error(`Unsupported action type '${action.type}'.`);
+  }
 }
 
 app.get('/api/dashboard', async (_req, res) => {
@@ -821,15 +1582,260 @@ app.put('/api/preferences', (req, res) => {
       templates: req.body?.templates || store.templates,
       activeTemplateId: req.body?.activeTemplateId || store.activeTemplateId,
       settings: req.body?.settings || store.settings,
+      rssSources: req.body?.rssSources || store.rssSources,
+      briefing: req.body?.briefing || store.briefing,
+      copilot: {
+        ...store.copilot,
+        requireConfirmation: req.body?.copilot?.requireConfirmation !== false
+      },
       seen: store.seen
     };
 
     store = normalizeStore(nextStore);
     persistStore();
+    scheduleBriefingJob();
 
     res.json({ ok: true, preferences: publicPreferences() });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/sources/rss', (_req, res) => {
+  res.json({
+    ok: true,
+    sources: store.rssSources,
+    presetKeys: Object.keys(RSS_PRESET_PACKS)
+  });
+});
+
+app.post('/api/sources/presets/apply', (req, res) => {
+  try {
+    const presetKey = stripHtml(req.body?.presetKey || '');
+    if (!presetKey) {
+      return res.status(400).json({ ok: false, error: 'presetKey is required.' });
+    }
+
+    const action = queueCopilotAction({
+      type: 'apply_preset_pack',
+      payload: { presetKey },
+      summary: `Apply preset pack '${presetKey}'`,
+      risk: 'low',
+      origin: 'manual'
+    });
+
+    return res.json({ ok: true, queued: true, action });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/sources/rss', (req, res) => {
+  try {
+    const source = sanitizeRssSource(req.body || {}, 'source');
+    if (!source) {
+      return res.status(400).json({ ok: false, error: 'Provide valid source name and RSS URL.' });
+    }
+
+    const action = queueCopilotAction({
+      type: 'add_rss_source',
+      payload: { source },
+      summary: `Add source ${source.name}`,
+      risk: 'low',
+      origin: 'manual'
+    });
+
+    return res.json({ ok: true, queued: true, action });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.patch('/api/sources/rss/:id', (req, res) => {
+  try {
+    const id = stripHtml(req.params.id || '');
+    const action = queueCopilotAction({
+      type: 'update_rss_source',
+      payload: {
+        id,
+        patch: {
+          name: req.body?.name,
+          url: req.body?.url,
+          category: req.body?.category,
+          enabled: req.body?.enabled
+        }
+      },
+      summary: `Update source ${id}`,
+      risk: 'low',
+      origin: 'manual'
+    });
+
+    return res.json({ ok: true, queued: true, action });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.delete('/api/sources/rss/:id', (req, res) => {
+  try {
+    const id = stripHtml(req.params.id || '');
+    const action = queueCopilotAction({
+      type: 'remove_rss_source',
+      payload: { id },
+      summary: `Remove source ${id}`,
+      risk: 'medium',
+      origin: 'manual'
+    });
+
+    return res.json({ ok: true, queued: true, action });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/copilot/chat', async (req, res) => {
+  try {
+    const message = stripHtml(req.body?.message || '');
+    if (!message) {
+      return res.status(400).json({ ok: false, error: 'message is required.' });
+    }
+
+    saveChatTurn('user', message);
+
+    const dashboard = await buildDashboardData();
+    const reply = composeCopilotReply(message, dashboard);
+    const requests = parseMessageToActionRequests(message);
+
+    const queuedActions = requests.map((request) => queueCopilotAction(request));
+
+    saveChatTurn('assistant', reply);
+
+    return res.json({
+      ok: true,
+      reply,
+      needsConfirmation: queuedActions.length > 0,
+      queuedActions,
+      suggestions: [
+        'Ask for a summary of what is new.',
+        'Add an RSS source URL to track another niche.',
+        'Set or adjust schedule/timezone.',
+        'Pause or resume telegram delivery.'
+      ]
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/copilot/actions', (_req, res) => {
+  const pending = store.copilot.pendingActions.filter((action) => action.status === 'pending');
+  const recent = store.copilot.pendingActions.slice(0, 20);
+
+  res.json({
+    ok: true,
+    requireConfirmation: store.copilot.requireConfirmation,
+    pending,
+    recent
+  });
+});
+
+app.post('/api/copilot/actions/:id/confirm', async (req, res) => {
+  try {
+    const id = stripHtml(req.params.id || '');
+    const action = store.copilot.pendingActions.find((entry) => entry.id === id);
+
+    if (!action) {
+      return res.status(404).json({ ok: false, error: 'Action not found.' });
+    }
+
+    if (action.status !== 'pending') {
+      return res.status(400).json({ ok: false, error: `Action already ${action.status}.` });
+    }
+
+    action.status = 'confirmed';
+    action.updatedAt = new Date().toISOString();
+
+    try {
+      const result = await executeAction(action);
+      action.result = result;
+      persistStore();
+      return res.json({ ok: true, action, result });
+    } catch (error) {
+      action.status = 'failed';
+      action.updatedAt = new Date().toISOString();
+      action.error = error.message;
+      persistStore();
+      return res.status(500).json({ ok: false, error: error.message, action });
+    }
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/copilot/actions/:id/reject', (req, res) => {
+  try {
+    const id = stripHtml(req.params.id || '');
+    const action = store.copilot.pendingActions.find((entry) => entry.id === id);
+
+    if (!action) {
+      return res.status(404).json({ ok: false, error: 'Action not found.' });
+    }
+
+    if (action.status !== 'pending') {
+      return res.status(400).json({ ok: false, error: `Action already ${action.status}.` });
+    }
+
+    action.status = 'rejected';
+    action.updatedAt = new Date().toISOString();
+    persistStore();
+
+    return res.json({ ok: true, action });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/copilot/briefings', (_req, res) => {
+  res.json({
+    ok: true,
+    briefing: store.briefing
+  });
+});
+
+app.patch('/api/copilot/briefings/settings', (req, res) => {
+  try {
+    const patch = parseSchedulePatch(req.body || {});
+
+    const action = queueCopilotAction({
+      type: 'update_briefing_settings',
+      payload: { patch },
+      summary: `Update briefing schedule to ${patch.schedule.time} ${patch.schedule.timezone}`,
+      risk: 'low',
+      origin: 'manual'
+    });
+
+    return res.json({ ok: true, queued: true, action });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/copilot/briefings/generate', async (req, res) => {
+  try {
+    const mode = req.body?.mode === 'full' ? 'full' : 'new';
+    const templateId = stripHtml(req.body?.templateId || store.activeTemplateId || '');
+    const pausedDecision = req.body?.pausedDecision;
+
+    const result = await generateBriefing({
+      mode,
+      templateId,
+      pausedDecision,
+      skipPausePrompt: req.body?.skipPausePrompt === true
+    });
+
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 
@@ -856,7 +1862,14 @@ app.post('/api/notify/telegram/digest', async (req, res) => {
   try {
     const mode = req.body?.mode === 'full' ? 'full' : 'new';
     const templateId = stripHtml(req.body?.templateId || '');
-    const result = await sendDigest({ mode, templateId });
+
+    const result = await sendDigest({
+      mode,
+      templateId,
+      pausedDecision: store.briefing.behavior.defaultContinueWhenPaused ? 'continue' : 'cancel',
+      skipPausePrompt: true
+    });
+
     res.json(result);
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
@@ -880,6 +1893,10 @@ app.post('/api/notify/telegram/message', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Message cannot be empty' });
     }
 
+    if (store.briefing.delivery.telegramPaused || !store.briefing.delivery.telegram) {
+      return res.status(400).json({ ok: false, error: 'Telegram delivery is paused in briefing settings.' });
+    }
+
     const result = await sendTelegramMessage(message);
     return res.json({ ok: true, telegramResponse: result });
   } catch (error) {
@@ -892,13 +1909,17 @@ app.get('/api/meta', (_req, res) => {
     app: 'Trend Sniffer',
     telegramConfigured: canSendTelegram(),
     now: new Date().toISOString(),
-    activeTemplateId: store.activeTemplateId
+    activeTemplateId: store.activeTemplateId,
+    briefingSchedule: store.briefing.schedule,
+    telegramPaused: store.briefing.delivery.telegramPaused
   });
 });
 
 app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+scheduleBriefingJob();
 
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console

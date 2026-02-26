@@ -199,68 +199,86 @@
             <h2>Copilot</h2>
             <p>Local assistant, manual RSS control, and confirmation-first actions.</p>
           </div>
-          <div class="copilot-grid">
-            <div class="card inner-card">
-              <h3>Ask Copilot</h3>
-              <label class="search block">
-                <span>Prompt</span>
-                <textarea id="copilotInput" rows="4" placeholder="Try: What's new, pause telegram, add source https://..."></textarea>
-              </label>
-              <button id="copilotAskBtn" class="btn btn-primary">Ask Copilot</button>
-              <pre id="copilotOutput" class="preview">Copilot is ready.</pre>
-            </div>
-            <div class="card inner-card">
-              <div class="section-head slim">
-                <h3>Pending Confirmations</h3>
-                <button id="refreshActionsBtn" class="btn">Refresh Queue</button>
+          <div class="copilot-shell">
+            <div class="card inner-card copilot-panel copilot-assistant-panel">
+              <div class="copilot-head">
+                <h3>Assistant</h3>
+                <p class="hint">Ask for summaries, source changes, schedule updates, or alert controls.</p>
               </div>
-              <div id="copilotActionsList" class="action-list"></div>
-              <div id="actionsPager" class="pager"></div>
-            </div>
-            <div class="card inner-card">
-              <h3>RSS Sources (Simple Mode)</h3>
-              <div class="button-row">
-                <button id="applyBusinessMakerPresetBtn" class="btn">Apply Business + Maker</button>
-                <button id="applyTechPresetBtn" class="btn">Apply Technology Core</button>
-              </div>
-              <div class="inline-form stacked">
-                <input id="rssNameInput" type="text" placeholder="Source name (required)" />
-                <input id="rssUrlInput" type="url" placeholder="RSS URL (required)" />
-                <input id="rssCategoryInput" type="text" placeholder="Category (e.g. Design, Finance, Sport)" />
-                <button id="addRssBtn" class="btn">Queue Add Source</button>
-              </div>
-              <div id="rssSourcesList" class="source-list"></div>
-              <div id="sourcesPager" class="pager"></div>
-            </div>
-            <div class="card inner-card">
-              <h3>Daily Briefing Settings</h3>
-              <div class="inline-form stacked">
+              <div class="copilot-assistant-layout">
                 <label class="search block">
-                  <span>Time</span>
-                  <input id="briefingTimeInput" type="time" value="06:30" />
+                  <span>Prompt</span>
+                  <textarea id="copilotInput" rows="4" placeholder="Try: What's new, pause telegram, add source https://..."></textarea>
                 </label>
-                <label class="search block">
-                  <span>Timezone</span>
-                  <input id="briefingTimezoneInput" type="text" value="Africa/Johannesburg" />
-                </label>
-                <label class="toggle">
-                  <input id="briefingInAppInput" type="checkbox" checked />
-                  <span>Generate in-app briefing</span>
-                </label>
-                <label class="toggle">
-                  <input id="briefingTelegramInput" type="checkbox" checked />
-                  <span>Enable telegram delivery</span>
-                </label>
-                <label class="toggle">
-                  <input id="briefingTelegramPausedInput" type="checkbox" />
-                  <span>Pause telegram summary sending</span>
-                </label>
-              </div>
-              <div class="button-row">
-                <button id="saveBriefingSettingsBtn" class="btn">Queue Settings Update</button>
-                <button id="generateBriefingBtn" class="btn btn-primary">Generate Briefing Now</button>
+                <div class="button-row">
+                  <button id="copilotAskBtn" class="btn btn-primary">Ask Copilot</button>
+                </div>
+                <pre id="copilotOutput" class="preview">Copilot is ready.</pre>
               </div>
               <p id="copilotStatus" class="hint">All config is stored locally in data/trend-sniffer-store.json.</p>
+            </div>
+
+            <div class="copilot-grid">
+              <div class="card inner-card copilot-panel">
+                <div class="copilot-head row">
+                  <h3>Pending Confirmations</h3>
+                  <button id="refreshActionsBtn" class="btn">Refresh Queue</button>
+                </div>
+                <div id="copilotActionsList" class="action-list"></div>
+                <div id="actionsPager" class="pager"></div>
+              </div>
+
+              <div class="card inner-card copilot-panel">
+                <div class="copilot-head">
+                  <h3>Daily Briefing Settings</h3>
+                  <p class="hint">Schedule and delivery behavior with confirmation-first updates.</p>
+                </div>
+                <div class="inline-form stacked">
+                  <label class="search block">
+                    <span>Time</span>
+                    <input id="briefingTimeInput" type="time" value="06:30" />
+                  </label>
+                  <label class="search block">
+                    <span>Timezone</span>
+                    <input id="briefingTimezoneInput" type="text" value="Africa/Johannesburg" />
+                  </label>
+                  <label class="toggle">
+                    <input id="briefingInAppInput" type="checkbox" checked />
+                    <span>Generate in-app briefing</span>
+                  </label>
+                  <label class="toggle">
+                    <input id="briefingTelegramInput" type="checkbox" checked />
+                    <span>Enable telegram delivery</span>
+                  </label>
+                  <label class="toggle">
+                    <input id="briefingTelegramPausedInput" type="checkbox" />
+                    <span>Pause telegram summary sending</span>
+                  </label>
+                </div>
+                <div class="button-row">
+                  <button id="saveBriefingSettingsBtn" class="btn">Queue Settings Update</button>
+                  <button id="generateBriefingBtn" class="btn btn-primary">Generate Briefing Now</button>
+                </div>
+              </div>
+
+              <div class="card inner-card copilot-panel copilot-sources-panel">
+                <div class="copilot-head">
+                  <h3>RSS Sources (Simple Mode)</h3>
+                  <p class="hint">Apply presets and manage custom sources without changing current logic.</p>
+                </div>
+                <div class="button-row">
+                  <button id="applyBusinessMakerPresetBtn" class="btn">Apply Business + Maker</button>
+                  <button id="applyTechPresetBtn" class="btn">Apply Technology Core</button>
+                </div>
+                <div class="inline-form stacked">
+                  <input id="rssNameInput" type="text" placeholder="Source name (required)" />
+                  <input id="rssUrlInput" type="url" placeholder="RSS URL (required)" />
+                  <input id="rssCategoryInput" type="text" placeholder="Category (e.g. Design, Finance, Sport)" />
+                  <button id="addRssBtn" class="btn">Queue Add Source</button>
+                </div>
+                <div id="rssSourcesList" class="source-list"></div>
+                <div id="sourcesPager" class="pager"></div>
+              </div>
             </div>
           </div>
         </article>

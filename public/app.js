@@ -3,7 +3,8 @@ const state = {
   preferences: null,
   tab: 'signals',
   query: '',
-  editingTemplateId: null
+  editingTemplateId: null,
+  copilotActions: []
 };
 
 const elements = {
@@ -45,7 +46,27 @@ const elements = {
   saveTemplateBtn: document.getElementById('saveTemplateBtn'),
   deleteTemplateBtn: document.getElementById('deleteTemplateBtn'),
   activateTemplateBtn: document.getElementById('activateTemplateBtn'),
-  studioStatus: document.getElementById('studioStatus')
+  studioStatus: document.getElementById('studioStatus'),
+  copilotInput: document.getElementById('copilotInput'),
+  copilotAskBtn: document.getElementById('copilotAskBtn'),
+  copilotOutput: document.getElementById('copilotOutput'),
+  copilotActionsList: document.getElementById('copilotActionsList'),
+  refreshActionsBtn: document.getElementById('refreshActionsBtn'),
+  applyBusinessMakerPresetBtn: document.getElementById('applyBusinessMakerPresetBtn'),
+  applyTechPresetBtn: document.getElementById('applyTechPresetBtn'),
+  rssNameInput: document.getElementById('rssNameInput'),
+  rssUrlInput: document.getElementById('rssUrlInput'),
+  rssCategoryInput: document.getElementById('rssCategoryInput'),
+  addRssBtn: document.getElementById('addRssBtn'),
+  rssSourcesList: document.getElementById('rssSourcesList'),
+  briefingTimeInput: document.getElementById('briefingTimeInput'),
+  briefingTimezoneInput: document.getElementById('briefingTimezoneInput'),
+  briefingInAppInput: document.getElementById('briefingInAppInput'),
+  briefingTelegramInput: document.getElementById('briefingTelegramInput'),
+  briefingTelegramPausedInput: document.getElementById('briefingTelegramPausedInput'),
+  saveBriefingSettingsBtn: document.getElementById('saveBriefingSettingsBtn'),
+  generateBriefingBtn: document.getElementById('generateBriefingBtn'),
+  copilotStatus: document.getElementById('copilotStatus')
 };
 
 const defaultTemplateBody = [
@@ -91,15 +112,25 @@ function templateId() {
 }
 
 function currentPreferences() {
-  return state.preferences || {
-    watchlist: { topics: [], channels: [] },
-    templates: [],
-    activeTemplateId: null,
-    settings: { sendOnlyNewItems: true }
-  };
+  return (
+    state.preferences || {
+      watchlist: { topics: [], channels: [] },
+      templates: [],
+      activeTemplateId: null,
+      settings: { sendOnlyNewItems: true },
+      rssSources: [],
+      briefing: {
+        schedule: { time: '06:30', timezone: 'Africa/Johannesburg' },
+        delivery: { inApp: true, telegram: true, telegramPaused: false },
+        behavior: { askBeforeGenerateWhenTelegramPaused: true, defaultContinueWhenPaused: true }
+      },
+      copilot: { requireConfirmation: true }
+    }
+  );
 }
 
 function setStatus(element, message, tone = 'normal') {
+  if (!element) return;
   element.textContent = message;
   element.classList.remove('warn', 'good');
   if (tone === 'warn') element.classList.add('warn');
@@ -233,6 +264,71 @@ function renderPulse() {
   elements.pendingStrip.textContent = `${pending.total} watchlist-matching new items pending (${pending.signals} signals, ${pending.searches} searches, ${pending.videos} videos).`;
 }
 
+function renderRssSources() {
+  const sources = currentPreferences().rssSources || [];
+
+  if (!sources.length) {
+    elements.rssSourcesList.innerHTML = '<p class="hint">No RSS sources configured.</p>';
+    return;
+  }
+
+  elements.rssSourcesList.innerHTML = sources
+    .map(
+      (source) => `
+        <div class="source-item" data-source-id="${source.id}">
+          <strong>${source.name}</strong>
+          <div class="source-meta">
+            <span>${source.category}</span>
+            <span>${source.preset ? 'preset' : 'custom'}</span>
+            <span>${source.enabled ? 'enabled' : 'disabled'}</span>
+          </div>
+          <p>${source.url}</p>
+          <div class="button-row">
+            <button class="btn" data-source-action="toggle" data-source-id="${source.id}" data-enabled="${source.enabled}">${
+              source.enabled ? 'Disable' : 'Enable'
+            }</button>
+            <button class="btn" data-source-action="remove" data-source-id="${source.id}">Remove</button>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
+function renderActions() {
+  if (!state.copilotActions.length) {
+    elements.copilotActionsList.innerHTML = '<p class="hint">No pending actions.</p>';
+    return;
+  }
+
+  elements.copilotActionsList.innerHTML = state.copilotActions
+    .map(
+      (action) => `
+        <div class="action-item">
+          <strong>${action.summary}</strong>
+          <p>Type: ${action.type} | Risk: ${action.risk}</p>
+          <p>Created: ${formatDate(action.createdAt)}</p>
+          <div class="button-row">
+            <button class="btn btn-primary" data-action-control="confirm" data-action-id="${action.id}">Confirm</button>
+            <button class="btn" data-action-control="reject" data-action-id="${action.id}">Reject</button>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
+function renderBriefingSettings() {
+  const briefing = currentPreferences().briefing;
+  if (!briefing) return;
+
+  elements.briefingTimeInput.value = briefing.schedule?.time || '06:30';
+  elements.briefingTimezoneInput.value = briefing.schedule?.timezone || 'Africa/Johannesburg';
+  elements.briefingInAppInput.checked = briefing.delivery?.inApp !== false;
+  elements.briefingTelegramInput.checked = briefing.delivery?.telegram !== false;
+  elements.briefingTelegramPausedInput.checked = briefing.delivery?.telegramPaused === true;
+}
+
 function renderPreferences() {
   const prefs = currentPreferences();
 
@@ -282,6 +378,9 @@ function renderPreferences() {
     elements.templateBodyInput.value = template.body;
     state.editingTemplateId = template.id;
   }
+
+  renderRssSources();
+  renderBriefingSettings();
 }
 
 function render() {
@@ -353,14 +452,18 @@ function render() {
   elements.timestamp.textContent = `Last refresh: ${formatDate(data.generatedAt)}`;
   elements.sparkText.textContent = data.creative?.sparkLine || randomSparkFromChallenges();
 
+  const paused = currentPreferences().briefing?.delivery?.telegramPaused === true;
   elements.telegramStatus.textContent = data.telegramConfigured
-    ? 'Telegram configured'
+    ? paused
+      ? 'Telegram configured (paused)'
+      : 'Telegram configured'
     : 'Telegram not configured (set .env values)';
-  elements.telegramStatus.className = `pill ${data.telegramConfigured ? 'good' : 'warn'}`;
+  elements.telegramStatus.className = `pill ${data.telegramConfigured ? (paused ? 'warn' : 'good') : 'warn'}`;
 
   renderPulse();
   renderSourceMix();
   renderPreferences();
+  renderActions();
 }
 
 async function persistPreferences(statusMessage = 'Preferences saved.') {
@@ -378,6 +481,21 @@ async function persistPreferences(statusMessage = 'Preferences saved.') {
   state.preferences = payload.preferences;
   setStatus(elements.studioStatus, statusMessage, 'good');
   renderPreferences();
+}
+
+async function loadActions() {
+  try {
+    const response = await fetch('/api/copilot/actions');
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || 'Failed loading actions');
+    }
+
+    state.copilotActions = payload.pending || [];
+    renderActions();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Failed loading action queue: ${error.message}`, 'warn');
+  }
 }
 
 async function loadDashboard() {
@@ -401,6 +519,7 @@ async function loadDashboard() {
     state.preferences = state.dashboard.preferences;
     state.editingTemplateId = state.preferences.activeTemplateId;
     render();
+    await loadActions();
   } catch (error) {
     const message = `<div class="card feed-card"><p>Failed loading dashboard: ${error.message}</p></div>`;
     elements.signalsGrid.innerHTML = message;
@@ -415,7 +534,7 @@ async function loadDashboard() {
 }
 
 async function sendDigest(mode = 'new') {
-  const templateId = elements.alertTemplateSelect.value;
+  const templateIdValue = elements.alertTemplateSelect.value;
   const btn = mode === 'full' ? elements.sendFullDigestBtn : elements.sendDigestBtn;
   btn.disabled = true;
 
@@ -423,13 +542,16 @@ async function sendDigest(mode = 'new') {
     const response = await fetch('/api/notify/telegram/digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, templateId })
+      body: JSON.stringify({ mode, templateId: templateIdValue })
     });
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || 'Failed sending digest');
 
     if (data.sent) {
       setStatus(elements.alertStatus, `Alert sent (${data.counts.total} items).`, 'good');
+      await loadDashboard();
+    } else if (data.generated) {
+      setStatus(elements.alertStatus, `Digest generated in-app (${data.counts.total} items).`, 'good');
       await loadDashboard();
     } else {
       setStatus(elements.alertStatus, data.reason || 'No new items to send.');
@@ -616,6 +738,261 @@ function activateTemplate() {
   persistPreferences('Template activated.').catch((error) => setStatus(elements.studioStatus, error.message, 'warn'));
 }
 
+async function askCopilot() {
+  const message = elements.copilotInput.value.trim();
+  if (!message) {
+    setStatus(elements.copilotStatus, 'Type a prompt first.', 'warn');
+    return;
+  }
+
+  elements.copilotAskBtn.disabled = true;
+  elements.copilotAskBtn.textContent = 'Thinking...';
+
+  try {
+    const response = await fetch('/api/copilot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'Copilot request failed');
+    }
+
+    elements.copilotOutput.textContent = data.reply;
+    if (data.needsConfirmation) {
+      setStatus(elements.copilotStatus, 'Action(s) queued. Confirm or reject below.', 'good');
+    } else {
+      setStatus(elements.copilotStatus, 'Copilot response ready.', 'good');
+    }
+
+    elements.copilotInput.value = '';
+    await loadActions();
+    await loadDashboard();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Copilot failed: ${error.message}`, 'warn');
+  } finally {
+    elements.copilotAskBtn.disabled = false;
+    elements.copilotAskBtn.textContent = 'Ask Copilot';
+  }
+}
+
+async function confirmOrRejectAction(event) {
+  const button = event.target.closest('button[data-action-control]');
+  if (!button) return;
+
+  const actionId = button.dataset.actionId;
+  const control = button.dataset.actionControl;
+  const endpoint = control === 'confirm' ? 'confirm' : 'reject';
+
+  button.disabled = true;
+
+  try {
+    const response = await fetch(`/api/copilot/actions/${actionId}/${endpoint}`, {
+      method: 'POST'
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || `Failed to ${endpoint} action`);
+    }
+
+    setStatus(elements.copilotStatus, `Action ${endpoint}ed.`, 'good');
+    await loadActions();
+    await loadDashboard();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Action failed: ${error.message}`, 'warn');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function queuePresetApply(presetKey) {
+  try {
+    const response = await fetch('/api/sources/presets/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presetKey })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'Failed queueing preset action');
+    }
+
+    setStatus(elements.copilotStatus, 'Preset action queued. Confirm it in Pending Confirmations.', 'good');
+    await loadActions();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Preset queue failed: ${error.message}`, 'warn');
+  }
+}
+
+async function queueAddRssSource() {
+  const name = elements.rssNameInput.value.trim();
+  const url = elements.rssUrlInput.value.trim();
+  const category = elements.rssCategoryInput.value.trim() || 'General';
+
+  if (!name || !url) {
+    setStatus(elements.copilotStatus, 'Source name and RSS URL are required.', 'warn');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/sources/rss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, url, category, enabled: true })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'Failed queueing source');
+    }
+
+    elements.rssNameInput.value = '';
+    elements.rssUrlInput.value = '';
+    elements.rssCategoryInput.value = '';
+
+    setStatus(elements.copilotStatus, 'Source add queued. Confirm it in Pending Confirmations.', 'good');
+    await loadActions();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Queue source failed: ${error.message}`, 'warn');
+  }
+}
+
+async function handleRssSourceAction(event) {
+  const button = event.target.closest('button[data-source-action]');
+  if (!button) return;
+
+  const sourceId = button.dataset.sourceId;
+  const action = button.dataset.sourceAction;
+
+  try {
+    if (action === 'toggle') {
+      const enabled = button.dataset.enabled !== 'true';
+      const response = await fetch(`/api/sources/rss/${sourceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Failed queueing toggle');
+      setStatus(elements.copilotStatus, 'Source toggle queued. Confirm it in Pending Confirmations.', 'good');
+    }
+
+    if (action === 'remove') {
+      const response = await fetch(`/api/sources/rss/${sourceId}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Failed queueing remove');
+      setStatus(elements.copilotStatus, 'Source removal queued. Confirm it in Pending Confirmations.', 'good');
+    }
+
+    await loadActions();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Source action failed: ${error.message}`, 'warn');
+  }
+}
+
+async function queueBriefingSettingsUpdate() {
+  const payload = {
+    schedule: {
+      time: elements.briefingTimeInput.value,
+      timezone: elements.briefingTimezoneInput.value.trim()
+    },
+    delivery: {
+      inApp: elements.briefingInAppInput.checked,
+      telegram: elements.briefingTelegramInput.checked,
+      telegramPaused: elements.briefingTelegramPausedInput.checked
+    }
+  };
+
+  try {
+    const response = await fetch('/api/copilot/briefings/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'Failed queueing briefing settings update');
+    }
+
+    setStatus(elements.copilotStatus, 'Briefing settings update queued. Confirm it in Pending Confirmations.', 'good');
+    await loadActions();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Queue settings failed: ${error.message}`, 'warn');
+  }
+}
+
+async function generateBriefingNow() {
+  elements.generateBriefingBtn.disabled = true;
+  elements.generateBriefingBtn.textContent = 'Generating...';
+
+  try {
+    const response = await fetch('/api/copilot/briefings/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'new', templateId: currentPreferences().activeTemplateId })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'Failed generating briefing');
+    }
+
+    if (data.needsConfirmationPrompt) {
+      const shouldContinue = window.confirm(
+        `${data.message}\n\nPress OK to continue generating in-app (default), or Cancel to stop.`
+      );
+
+      const secondResponse = await fetch('/api/copilot/briefings/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'new',
+          templateId: currentPreferences().activeTemplateId,
+          pausedDecision: shouldContinue ? 'continue' : 'cancel'
+        })
+      });
+
+      const secondData = await secondResponse.json();
+      if (!secondResponse.ok || !secondData.ok) {
+        throw new Error(secondData.error || 'Follow-up briefing request failed');
+      }
+
+      if (secondData.generated) {
+        setStatus(
+          elements.copilotStatus,
+          secondData.sent
+            ? `Briefing generated and sent (${secondData.counts.total} items).`
+            : `Briefing generated in-app (${secondData.counts.total} items).`,
+          'good'
+        );
+      } else {
+        setStatus(elements.copilotStatus, secondData.reason || 'Briefing skipped.', 'warn');
+      }
+    } else if (data.generated) {
+      setStatus(
+        elements.copilotStatus,
+        data.sent ? `Briefing generated and sent (${data.counts.total} items).` : `Briefing generated in-app (${data.counts.total} items).`,
+        'good'
+      );
+    } else {
+      setStatus(elements.copilotStatus, data.reason || 'No briefing generated.', 'warn');
+    }
+
+    await loadDashboard();
+  } catch (error) {
+    setStatus(elements.copilotStatus, `Generate briefing failed: ${error.message}`, 'warn');
+  } finally {
+    elements.generateBriefingBtn.disabled = false;
+    elements.generateBriefingBtn.textContent = 'Generate Briefing Now';
+  }
+}
+
 function bindTabs() {
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabPanels = document.querySelectorAll('.tab-panel');
@@ -657,6 +1034,18 @@ function bindEvents() {
   elements.sparkBtn.addEventListener('click', () => {
     elements.sparkText.textContent = randomSparkFromChallenges();
   });
+
+  elements.copilotAskBtn.addEventListener('click', askCopilot);
+  elements.refreshActionsBtn.addEventListener('click', loadActions);
+  elements.copilotActionsList.addEventListener('click', confirmOrRejectAction);
+
+  elements.applyBusinessMakerPresetBtn.addEventListener('click', () => queuePresetApply('business-maker'));
+  elements.applyTechPresetBtn.addEventListener('click', () => queuePresetApply('technology-core'));
+  elements.addRssBtn.addEventListener('click', queueAddRssSource);
+  elements.rssSourcesList.addEventListener('click', handleRssSourceAction);
+
+  elements.saveBriefingSettingsBtn.addEventListener('click', queueBriefingSettingsUpdate);
+  elements.generateBriefingBtn.addEventListener('click', generateBriefingNow);
 }
 
 function init() {

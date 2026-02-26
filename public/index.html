@@ -18,7 +18,7 @@
         <p class="eyebrow">Live Industry Intelligence</p>
         <h1>Trend Sniffer</h1>
         <p class="tagline">
-          A structured intelligence board for tracking fresh technology trends, common Google searches, and product opportunities worth building.
+          A structured intelligence board for tracking fresh technology trends, common Google searches, product opportunities, and actionable alerts.
         </p>
         <div class="hero-actions">
           <button id="refreshBtn" class="btn btn-primary">Refresh Live Signals</button>
@@ -28,6 +28,20 @@
           </label>
         </div>
         <div id="stats" class="stats"></div>
+        <div class="mini-grid">
+          <div class="card mini-card">
+            <h3>Pulse Meter</h3>
+            <p id="pendingStrip">Checking pending items...</p>
+          </div>
+          <div class="card mini-card">
+            <h3>Idea Spark</h3>
+            <p id="sparkText">Loading spark...</p>
+          </div>
+          <div class="card mini-card">
+            <h3>Topic Mix</h3>
+            <div id="sourceMix" class="mix-list"></div>
+          </div>
+        </div>
       </header>
 
       <section class="panel-nav card">
@@ -36,6 +50,7 @@
         <button class="tab-btn" data-tab="videos">Video Radar</button>
         <button class="tab-btn" data-tab="challenges">Build Opportunities</button>
         <button class="tab-btn" data-tab="alerts">Alerts</button>
+        <button class="tab-btn" data-tab="watchlist">Watchlist Studio</button>
       </section>
 
       <section class="content-stack">
@@ -67,6 +82,7 @@
           <div class="section-head">
             <h2>Current Developer Challenges</h2>
             <p>Recurring pain points with product ideas and monetization paths.</p>
+            <button id="sparkBtn" class="btn">Generate New Spark</button>
           </div>
           <div id="challengesGrid" class="grid"></div>
           <div class="section-head slim">
@@ -79,13 +95,33 @@
         <article class="tab-panel" data-panel="alerts">
           <div class="section-head">
             <h2>Telegram Alerts</h2>
-            <p>Send live digest updates to your Telegram channel.</p>
+            <p>Push alerts only when new items appear, with optional full digest override.</p>
           </div>
           <div class="alerts-layout">
             <div class="card inner-card">
-              <h3>Digest Blast</h3>
-              <p>Push the latest top signals, searches, and videos now.</p>
-              <button id="sendDigestBtn" class="btn btn-primary">Send Digest to Telegram</button>
+              <h3>Digest Delivery</h3>
+              <label class="search block">
+                <span>Template</span>
+                <select id="alertTemplateSelect"></select>
+              </label>
+              <div class="button-row">
+                <button id="sendDigestBtn" class="btn btn-primary">Send New-Items Alert</button>
+                <button id="sendFullDigestBtn" class="btn">Send Full Digest</button>
+              </div>
+              <div class="button-row">
+                <button id="previewDigestBtn" class="btn">Preview Digest</button>
+                <button id="acknowledgeBtn" class="btn">Mark Current Feed Seen</button>
+              </div>
+              <p id="alertStatus" class="hint">Ready.</p>
+            </div>
+            <div class="card inner-card">
+              <h3>Digest Preview</h3>
+              <pre id="previewOutput" class="preview">No preview yet.</pre>
+            </div>
+            <div class="card inner-card references">
+              <h3>Sources Used</h3>
+              <ul id="sourcesList"></ul>
+              <p class="hint">Every card links back to its source for direct verification.</p>
             </div>
             <div class="card inner-card">
               <h3>Custom Message</h3>
@@ -95,10 +131,49 @@
               </label>
               <button id="sendMessageBtn" class="btn">Send Message</button>
             </div>
-            <div class="card inner-card references">
-              <h3>Sources Used</h3>
-              <ul id="sourcesList"></ul>
-              <p class="hint">Every card links back to its source for direct verification.</p>
+          </div>
+        </article>
+
+        <article class="tab-panel" data-panel="watchlist">
+          <div class="section-head">
+            <h2>Watchlist Studio</h2>
+            <p>Persist your topics, saved channels, and custom digest templates.</p>
+          </div>
+          <div class="studio-grid">
+            <div class="card inner-card">
+              <h3>Saved Topics</h3>
+              <div class="chip-wrap" id="watchTopicsList"></div>
+              <div class="inline-form">
+                <input id="topicInput" type="text" placeholder="e.g. edge ai" />
+                <button id="addTopicBtn" class="btn">Add Topic</button>
+              </div>
+            </div>
+            <div class="card inner-card">
+              <h3>Saved Channels</h3>
+              <div class="chip-wrap" id="watchChannelsList"></div>
+              <div class="inline-form stacked">
+                <input id="channelLabelInput" type="text" placeholder="Channel label (required)" />
+                <input id="channelIdInput" type="text" placeholder="YouTube channel ID (optional, for ingest)" />
+                <button id="addChannelBtn" class="btn">Add Channel</button>
+              </div>
+            </div>
+            <div class="card inner-card full-width">
+              <h3>Custom Digest Templates</h3>
+              <label class="search block">
+                <span>Templates</span>
+                <select id="templateSelect"></select>
+              </label>
+              <div class="inline-form stacked">
+                <input id="templateNameInput" type="text" placeholder="Template name" />
+                <textarea id="templateBodyInput" rows="9" placeholder="Use placeholders like {{generatedAt}}, {{signalsList}}, {{searchesList}}, {{videosList}}, {{watchTopics}}, {{sparkLine}}"></textarea>
+              </div>
+              <div class="button-row">
+                <button id="newTemplateBtn" class="btn">New Template</button>
+                <button id="saveTemplateBtn" class="btn btn-primary">Save Template</button>
+                <button id="deleteTemplateBtn" class="btn">Delete Template</button>
+                <button id="activateTemplateBtn" class="btn">Set Active</button>
+              </div>
+              <p id="studioStatus" class="hint">Template changes are persisted locally.</p>
             </div>
           </div>
         </article>

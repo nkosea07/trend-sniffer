@@ -19,6 +19,7 @@ Trend Sniffer is a live technology intelligence dashboard that helps you stay up
 
 3. `Video Radar` tab
 - Pulls fresh uploads from selected technology YouTube channels using RSS.
+- Supports adding extra saved YouTube channels (by channel ID) from Watchlist Studio.
 
 4. `Build Opportunities` tab
 - Scans recent high-signal Stack Overflow questions.
@@ -26,9 +27,13 @@ Trend Sniffer is a live technology intelligence dashboard that helps you stay up
 - Includes reference links for verification.
 
 5. `Alerts` tab
-- Send digest messages to Telegram manually.
-- Send custom Telegram channel messages.
-- Optional cron-based automated digest delivery.
+- Sends Telegram alerts using digest templates.
+- Default behavior sends only when new items appear.
+- Supports full digest override, preview, and “mark current feed seen”.
+
+6. `Watchlist Studio` tab
+- Persist saved topics and channels to a local JSON store.
+- Create/update/delete/activate custom digest templates.
 
 ## Setup
 
@@ -53,14 +58,26 @@ TELEGRAM_CRON=0 8 * * *
 Notes:
 - Add your bot as admin in your channel.
 - `TELEGRAM_CRON` is optional. If omitted, only manual sends are available.
+- If cron is set, Trend Sniffer sends only when new watchlist-matching items are detected.
+
+## Persistence
+
+Watchlist settings, templates, and seen-item state are stored locally at:
+- `data/trend-sniffer-store.json`
+
+This file is gitignored and survives restarts in your local environment.
 
 ## API endpoints
 
-- `GET /api/dashboard` live aggregated dashboard payload
-- `GET /api/meta` app metadata and Telegram readiness
-- `POST /api/notify/telegram/digest` send digest now
+- `GET /api/dashboard` live aggregated dashboard payload + pending new counts
+- `GET /api/preferences` watchlist/template settings
+- `PUT /api/preferences` persist watchlist/template settings
+- `POST /api/notify/telegram/preview` preview templated digest message
+- `POST /api/notify/telegram/digest` send digest (`mode: "new"` default, `"full"` optional)
+- `POST /api/alerts/acknowledge` mark current feed as seen
 - `POST /api/notify/telegram/message` send custom message (`{ "message": "..." }`)
+- `GET /api/meta` app metadata and Telegram readiness
 
 ## Is it possible to use common/recent Google searches?
 
-Yes. This app already does that through Google Trends RSS (`https://trends.google.com/trending/rss?geo=US`) and surfaces those results in the `Google Searches` tab with source links.
+Yes. This app uses Google Trends RSS (`https://trends.google.com/trending/rss?geo=US`) and surfaces those results in the `Google Searches` tab with source links.

@@ -1,0 +1,16 @@
+{
+  "name": "trend-sniffer",
+  "version": "1.0.0",
+  "description": "Trend Sniffer dashboard for live tech trends, Google search signals, and build opportunities",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^4.5.1",
+    "node-cron": "^3.0.3"
+  }
+}

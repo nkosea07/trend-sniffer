@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trend Sniffer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="grain"></div>
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <main class="shell">
+      <header class="hero card">
+        <p class="eyebrow">Live Industry Intelligence</p>
+        <h1>Trend Sniffer</h1>
+        <p class="tagline">
+          A structured intelligence board for tracking fresh technology trends, common Google searches, and product opportunities worth building.
+        </p>
+        <div class="hero-actions">
+          <button id="refreshBtn" class="btn btn-primary">Refresh Live Signals</button>
+          <label class="search">
+            <span>Filter</span>
+            <input id="searchInput" type="search" placeholder="Search trend, topic, source, challenge..." />
+          </label>
+        </div>
+        <div id="stats" class="stats"></div>
+      </header>
+
+      <section class="panel-nav card">
+        <button class="tab-btn active" data-tab="signals">Top Signals</button>
+        <button class="tab-btn" data-tab="searches">Google Searches</button>
+        <button class="tab-btn" data-tab="videos">Video Radar</button>
+        <button class="tab-btn" data-tab="challenges">Build Opportunities</button>
+        <button class="tab-btn" data-tab="alerts">Alerts</button>
+      </section>
+
+      <section class="content-stack">
+        <article class="tab-panel active" data-panel="signals">
+          <div class="section-head">
+            <h2>Fresh Tech Signals</h2>
+            <p>Curated from multiple live sources with direct references.</p>
+          </div>
+          <div id="signalsGrid" class="grid"></div>
+        </article>
+
+        <article class="tab-panel" data-panel="searches">
+          <div class="section-head">
+            <h2>Most Common Recent Google Searches</h2>
+            <p>Live daily trending queries in the US from Google Trends RSS.</p>
+          </div>
+          <div id="searchesGrid" class="grid"></div>
+        </article>
+
+        <article class="tab-panel" data-panel="videos">
+          <div class="section-head">
+            <h2>Video Radar</h2>
+            <p>Track key releases and explainers from major technology channels.</p>
+          </div>
+          <div id="videosGrid" class="grid"></div>
+        </article>
+
+        <article class="tab-panel" data-panel="challenges">
+          <div class="section-head">
+            <h2>Current Developer Challenges</h2>
+            <p>Recurring pain points with product ideas and monetization paths.</p>
+          </div>
+          <div id="challengesGrid" class="grid"></div>
+          <div class="section-head slim">
+            <h3>Evidence Feed</h3>
+            <p>Recent high-signal questions linked for verification.</p>
+          </div>
+          <div id="evidenceGrid" class="grid"></div>
+        </article>
+
+        <article class="tab-panel" data-panel="alerts">
+          <div class="section-head">
+            <h2>Telegram Alerts</h2>
+            <p>Send live digest updates to your Telegram channel.</p>
+          </div>
+          <div class="alerts-layout">
+            <div class="card inner-card">
+              <h3>Digest Blast</h3>
+              <p>Push the latest top signals, searches, and videos now.</p>
+              <button id="sendDigestBtn" class="btn btn-primary">Send Digest to Telegram</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Custom Message</h3>
+              <label class="search block">
+                <span>Message</span>
+                <textarea id="customMessage" rows="4" placeholder="Drop a note to your channel..."></textarea>
+              </label>
+              <button id="sendMessageBtn" class="btn">Send Message</button>
+            </div>
+            <div class="card inner-card references">
+              <h3>Sources Used</h3>
+              <ul id="sourcesList"></ul>
+              <p class="hint">Every card links back to its source for direct verification.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <footer class="foot card">
+        <div>
+          <strong>Trend Sniffer</strong>
+          <p id="timestamp">Waiting for first sync...</p>
+        </div>
+        <p id="telegramStatus" class="pill">Checking Telegram status...</p>
+      </footer>
+    </main>
+
+    <template id="loadingTemplate">
+      <div class="card loading">Loading live data...</div>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

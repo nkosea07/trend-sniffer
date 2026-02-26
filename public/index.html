@@ -26,6 +26,16 @@
             <span>Filter</span>
             <input id="searchInput" type="search" placeholder="Search trend, topic, source, challenge..." />
           </label>
+          <label class="search cards-page-control">
+            <span>Cards / Page</span>
+            <select id="cardsPerPageInput">
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+              <option value="12">12</option>
+              <option value="16">16</option>
+              <option value="24">24</option>
+            </select>
+          </label>
         </div>
         <div id="stats" class="stats"></div>
         <div class="mini-grid">
@@ -61,6 +71,7 @@
             <p>Curated from multiple live sources with direct references.</p>
           </div>
           <div id="signalsGrid" class="grid"></div>
+          <div id="signalsPager" class="pager"></div>
         </article>
 
         <article class="tab-panel" data-panel="searches">
@@ -69,6 +80,7 @@
             <p>Live daily trending queries in the US from Google Trends RSS.</p>
           </div>
           <div id="searchesGrid" class="grid"></div>
+          <div id="searchesPager" class="pager"></div>
         </article>
 
         <article class="tab-panel" data-panel="videos">
@@ -77,6 +89,7 @@
             <p>Track key releases and explainers from major technology channels.</p>
           </div>
           <div id="videosGrid" class="grid"></div>
+          <div id="videosPager" class="pager"></div>
         </article>
 
         <article class="tab-panel" data-panel="challenges">
@@ -86,11 +99,13 @@
             <button id="sparkBtn" class="btn">Generate New Spark</button>
           </div>
           <div id="challengesGrid" class="grid"></div>
+          <div id="challengesPager" class="pager"></div>
           <div class="section-head slim">
             <h3>Evidence Feed</h3>
             <p>Recent high-signal questions linked for verification.</p>
           </div>
           <div id="evidenceGrid" class="grid"></div>
+          <div id="evidencePager" class="pager"></div>
         </article>
 
         <article class="tab-panel" data-panel="alerts">
@@ -200,6 +215,7 @@
                 <button id="refreshActionsBtn" class="btn">Refresh Queue</button>
               </div>
               <div id="copilotActionsList" class="action-list"></div>
+              <div id="actionsPager" class="pager"></div>
             </div>
             <div class="card inner-card">
               <h3>RSS Sources (Simple Mode)</h3>
@@ -214,6 +230,7 @@
                 <button id="addRssBtn" class="btn">Queue Add Source</button>
               </div>
               <div id="rssSourcesList" class="source-list"></div>
+              <div id="sourcesPager" class="pager"></div>
             </div>
             <div class="card inner-card">
               <h3>Daily Briefing Settings</h3>

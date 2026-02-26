@@ -149,6 +149,12 @@ body {
   flex: 1;
 }
 
+.cards-page-control {
+  min-width: 150px;
+  max-width: 180px;
+  flex: 0 0 170px;
+}
+
 .search span {
   font-size: 0.82rem;
   color: var(--muted);
@@ -306,6 +312,30 @@ body {
   display: grid;
   gap: 0.8rem;
   grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+}
+
+.pager {
+  display: flex;
+  justify-content: center;
+}
+
+.pager-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.pager-btn.active {
+  background: rgba(109, 240, 176, 0.2);
+  border-color: rgba(109, 240, 176, 0.55);
+}
+
+.pager-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-left: 0.35rem;
 }
 
 .feed-card {

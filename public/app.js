@@ -4,22 +4,40 @@ const state = {
   tab: 'signals',
   query: '',
   editingTemplateId: null,
-  copilotActions: []
+  copilotActions: [],
+  pagination: {
+    signals: 1,
+    searches: 1,
+    videos: 1,
+    challenges: 1,
+    evidence: 1,
+    actions: 1,
+    sources: 1
+  }
 };
+const DEFAULT_PAGE_SIZE = 8;
+const MIN_PAGE_SIZE = 4;
+const MAX_PAGE_SIZE = 30;
 
 const elements = {
   refreshBtn: document.getElementById('refreshBtn'),
   searchInput: document.getElementById('searchInput'),
+  cardsPerPageInput: document.getElementById('cardsPerPageInput'),
   stats: document.getElementById('stats'),
   sourceMix: document.getElementById('sourceMix'),
   pendingStrip: document.getElementById('pendingStrip'),
   sparkText: document.getElementById('sparkText'),
   sparkBtn: document.getElementById('sparkBtn'),
   signalsGrid: document.getElementById('signalsGrid'),
+  signalsPager: document.getElementById('signalsPager'),
   searchesGrid: document.getElementById('searchesGrid'),
+  searchesPager: document.getElementById('searchesPager'),
   videosGrid: document.getElementById('videosGrid'),
+  videosPager: document.getElementById('videosPager'),
   challengesGrid: document.getElementById('challengesGrid'),
+  challengesPager: document.getElementById('challengesPager'),
   evidenceGrid: document.getElementById('evidenceGrid'),
+  evidencePager: document.getElementById('evidencePager'),
   sourcesList: document.getElementById('sourcesList'),
   timestamp: document.getElementById('timestamp'),
   telegramStatus: document.getElementById('telegramStatus'),
@@ -51,6 +69,7 @@ const elements = {
   copilotAskBtn: document.getElementById('copilotAskBtn'),
   copilotOutput: document.getElementById('copilotOutput'),
   copilotActionsList: document.getElementById('copilotActionsList'),
+  actionsPager: document.getElementById('actionsPager'),
   refreshActionsBtn: document.getElementById('refreshActionsBtn'),
   applyBusinessMakerPresetBtn: document.getElementById('applyBusinessMakerPresetBtn'),
   applyTechPresetBtn: document.getElementById('applyTechPresetBtn'),
@@ -59,6 +78,7 @@ const elements = {
   rssCategoryInput: document.getElementById('rssCategoryInput'),
   addRssBtn: document.getElementById('addRssBtn'),
   rssSourcesList: document.getElementById('rssSourcesList'),
+  sourcesPager: document.getElementById('sourcesPager'),
   briefingTimeInput: document.getElementById('briefingTimeInput'),
   briefingTimezoneInput: document.getElementById('briefingTimezoneInput'),
   briefingInAppInput: document.getElementById('briefingInAppInput'),
@@ -117,7 +137,7 @@ function currentPreferences() {
       watchlist: { topics: [], channels: [] },
       templates: [],
       activeTemplateId: null,
-      settings: { sendOnlyNewItems: true },
+      settings: { sendOnlyNewItems: true, cardsPerPage: DEFAULT_PAGE_SIZE },
       rssSources: [],
       briefing: {
         schedule: { time: '06:30', timezone: 'Africa/Johannesburg' },
@@ -135,6 +155,83 @@ function setStatus(element, message, tone = 'normal') {
   element.classList.remove('warn', 'good');
   if (tone === 'warn') element.classList.add('warn');
   if (tone === 'good') element.classList.add('good');
+}
+
+function resetFeedPagination() {
+  ['signals', 'searches', 'videos', 'challenges', 'evidence'].forEach((key) => {
+    state.pagination[key] = 1;
+  });
+}
+
+function resetAllPagination() {
+  Object.keys(state.pagination).forEach((key) => {
+    state.pagination[key] = 1;
+  });
+}
+
+function cardsPerPage() {
+  const value = Number(currentPreferences()?.settings?.cardsPerPage);
+  if (!Number.isFinite(value)) return DEFAULT_PAGE_SIZE;
+  const rounded = Math.round(value);
+  return Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, rounded));
+}
+
+function getPagedCollection(items, key) {
+  const list = Array.isArray(items) ? items : [];
+  const pageSize = cardsPerPage();
+  const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+
+  if (!state.pagination[key] || state.pagination[key] < 1) {
+    state.pagination[key] = 1;
+  }
+  if (state.pagination[key] > totalPages) {
+    state.pagination[key] = totalPages;
+  }
+
+  const page = state.pagination[key];
+  const start = (page - 1) * pageSize;
+  const pagedItems = list.slice(start, start + pageSize);
+
+  return {
+    items: pagedItems,
+    page,
+    totalPages,
+    total: list.length
+  };
+}
+
+function renderPager(element, key, page, totalPages, total) {
+  if (!element) return;
+  const pageSize = cardsPerPage();
+
+  if (total <= pageSize) {
+    element.innerHTML = '';
+    return;
+  }
+
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, start + 4);
+  const adjustedStart = Math.max(1, end - 4);
+
+  const numberButtons = [];
+  for (let value = adjustedStart; value <= end; value += 1) {
+    numberButtons.push(
+      `<button class="btn pager-btn ${value === page ? 'active' : ''}" data-page-key="${key}" data-page-value="${value}">${value}</button>`
+    );
+  }
+
+  element.innerHTML = `
+    <div class="pager-row">
+      <button class="btn pager-btn" data-page-key="${key}" data-page-value="${Math.max(1, page - 1)}" ${
+        page <= 1 ? 'disabled' : ''
+      }>Prev</button>
+      ${numberButtons.join('')}
+      <button class="btn pager-btn" data-page-key="${key}" data-page-value="${Math.min(totalPages, page + 1)}" ${
+        page >= totalPages ? 'disabled' : ''
+      }>Next</button>
+      <span class="pager-meta">Page ${page} of ${totalPages} (${total})</span>
+    </div>
+  `;
 }
 
 function createSignalCard(item) {
@@ -266,13 +363,15 @@ function renderPulse() {
 
 function renderRssSources() {
   const sources = currentPreferences().rssSources || [];
+  const paged = getPagedCollection(sources, 'sources');
 
-  if (!sources.length) {
+  if (!paged.total) {
     elements.rssSourcesList.innerHTML = '<p class="hint">No RSS sources configured.</p>';
+    renderPager(elements.sourcesPager, 'sources', 1, 1, 0);
     return;
   }
 
-  elements.rssSourcesList.innerHTML = sources
+  elements.rssSourcesList.innerHTML = paged.items
     .map(
       (source) => `
         <div class="source-item" data-source-id="${source.id}">
@@ -293,15 +392,20 @@ function renderRssSources() {
       `
     )
     .join('');
+
+  renderPager(elements.sourcesPager, 'sources', paged.page, paged.totalPages, paged.total);
 }
 
 function renderActions() {
-  if (!state.copilotActions.length) {
+  const paged = getPagedCollection(state.copilotActions, 'actions');
+
+  if (!paged.total) {
     elements.copilotActionsList.innerHTML = '<p class="hint">No pending actions.</p>';
+    renderPager(elements.actionsPager, 'actions', 1, 1, 0);
     return;
   }
 
-  elements.copilotActionsList.innerHTML = state.copilotActions
+  elements.copilotActionsList.innerHTML = paged.items
     .map(
       (action) => `
         <div class="action-item">
@@ -316,6 +420,8 @@ function renderActions() {
       `
     )
     .join('');
+
+  renderPager(elements.actionsPager, 'actions', paged.page, paged.totalPages, paged.total);
 }
 
 function renderBriefingSettings() {
@@ -379,6 +485,18 @@ function renderPreferences() {
     state.editingTemplateId = template.id;
   }
 
+  if (elements.cardsPerPageInput) {
+    const pageSize = cardsPerPage();
+    const hasOption = [...elements.cardsPerPageInput.options].some((option) => Number(option.value) === pageSize);
+    if (!hasOption) {
+      const option = document.createElement('option');
+      option.value = String(pageSize);
+      option.textContent = String(pageSize);
+      elements.cardsPerPageInput.appendChild(option);
+    }
+    elements.cardsPerPageInput.value = String(pageSize);
+  }
+
   renderRssSources();
   renderBriefingSettings();
 }
@@ -415,25 +533,41 @@ function render() {
     return [item.title, item.tags.join(' ')].some(matchesQuery);
   });
 
-  elements.signalsGrid.innerHTML = signals.length
-    ? signals.map(createSignalCard).join('')
+  const pagedSignals = getPagedCollection(signals, 'signals');
+  elements.signalsGrid.innerHTML = pagedSignals.total
+    ? pagedSignals.items.map(createSignalCard).join('')
     : emptyCard('No signal matches your filter.');
+  renderPager(elements.signalsPager, 'signals', pagedSignals.page, pagedSignals.totalPages, pagedSignals.total);
 
-  elements.searchesGrid.innerHTML = searches.length
-    ? searches.map(createSearchCard).join('')
+  const pagedSearches = getPagedCollection(searches, 'searches');
+  elements.searchesGrid.innerHTML = pagedSearches.total
+    ? pagedSearches.items.map(createSearchCard).join('')
     : emptyCard('No Google search trend matches your filter.');
+  renderPager(elements.searchesPager, 'searches', pagedSearches.page, pagedSearches.totalPages, pagedSearches.total);
 
-  elements.videosGrid.innerHTML = videos.length
-    ? videos.map(createVideoCard).join('')
+  const pagedVideos = getPagedCollection(videos, 'videos');
+  elements.videosGrid.innerHTML = pagedVideos.total
+    ? pagedVideos.items.map(createVideoCard).join('')
     : emptyCard('No video matches your filter.');
+  renderPager(elements.videosPager, 'videos', pagedVideos.page, pagedVideos.totalPages, pagedVideos.total);
 
-  elements.challengesGrid.innerHTML = opportunities.length
-    ? opportunities.map(createChallengeCard).join('')
+  const pagedChallenges = getPagedCollection(opportunities, 'challenges');
+  elements.challengesGrid.innerHTML = pagedChallenges.total
+    ? pagedChallenges.items.map(createChallengeCard).join('')
     : emptyCard('No challenge opportunity matches your filter.');
+  renderPager(
+    elements.challengesPager,
+    'challenges',
+    pagedChallenges.page,
+    pagedChallenges.totalPages,
+    pagedChallenges.total
+  );
 
-  elements.evidenceGrid.innerHTML = evidence.length
-    ? evidence.map(createEvidenceCard).join('')
+  const pagedEvidence = getPagedCollection(evidence, 'evidence');
+  elements.evidenceGrid.innerHTML = pagedEvidence.total
+    ? pagedEvidence.items.map(createEvidenceCard).join('')
     : emptyCard('No challenge evidence matches your filter.');
+  renderPager(elements.evidencePager, 'evidence', pagedEvidence.page, pagedEvidence.totalPages, pagedEvidence.total);
 
   elements.stats.innerHTML = [
     { label: 'Signals', value: data.signals.length },
@@ -993,6 +1127,41 @@ async function generateBriefingNow() {
   }
 }
 
+function updateCardsPerPage(event) {
+  const value = Number(event.target.value);
+  if (!Number.isFinite(value)) return;
+
+  const prefs = currentPreferences();
+  if (!prefs.settings) prefs.settings = {};
+  prefs.settings.cardsPerPage = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, Math.round(value)));
+  resetAllPagination();
+
+  persistPreferences(`Cards per page set to ${prefs.settings.cardsPerPage}.`)
+    .then(() => {
+      render();
+    })
+    .catch((error) => setStatus(elements.studioStatus, error.message, 'warn'));
+}
+
+function handlePagerClick(event) {
+  const button = event.target.closest('button[data-page-key][data-page-value]');
+  if (!button) return;
+
+  const key = button.dataset.pageKey;
+  const nextPage = Number(button.dataset.pageValue);
+  if (!key || Number.isNaN(nextPage)) return;
+
+  state.pagination[key] = Math.max(1, nextPage);
+
+  if (state.dashboard) {
+    render();
+    return;
+  }
+
+  if (key === 'actions') renderActions();
+  if (key === 'sources') renderRssSources();
+}
+
 function bindTabs() {
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabPanels = document.querySelectorAll('.tab-panel');
@@ -1008,11 +1177,16 @@ function bindTabs() {
 }
 
 function bindEvents() {
+  document.addEventListener('click', handlePagerClick);
   elements.refreshBtn.addEventListener('click', loadDashboard);
   elements.searchInput.addEventListener('input', (event) => {
     state.query = event.target.value;
+    resetFeedPagination();
     render();
   });
+  if (elements.cardsPerPageInput) {
+    elements.cardsPerPageInput.addEventListener('change', updateCardsPerPage);
+  }
 
   elements.sendDigestBtn.addEventListener('click', () => sendDigest('new'));
   elements.sendFullDigestBtn.addEventListener('click', () => sendDigest('full'));

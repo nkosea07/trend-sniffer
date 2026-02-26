@@ -210,6 +210,13 @@ function isValidTime(timeValue) {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(timeValue || ''));
 }
 
+function sanitizeCardsPerPage(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 8;
+  const rounded = Math.round(parsed);
+  return Math.min(30, Math.max(4, rounded));
+}
+
 function isValidTimezone(timezone) {
   try {
     Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date());
@@ -311,7 +318,8 @@ function defaultStore() {
       videos: {}
     },
     settings: {
-      sendOnlyNewItems: true
+      sendOnlyNewItems: true,
+      cardsPerPage: 8
     },
     rssSources: defaultRssSources(),
     copilot: {
@@ -447,7 +455,8 @@ function normalizeStore(rawStore) {
       videos: rawStore?.seen?.videos && typeof rawStore.seen.videos === 'object' ? rawStore.seen.videos : {}
     },
     settings: {
-      sendOnlyNewItems: rawStore?.settings?.sendOnlyNewItems !== false
+      sendOnlyNewItems: rawStore?.settings?.sendOnlyNewItems !== false,
+      cardsPerPage: sanitizeCardsPerPage(rawStore?.settings?.cardsPerPage)
     },
     rssSources: sanitizedRssSources,
     copilot: {

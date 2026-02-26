@@ -378,8 +378,8 @@ function renderRssSources() {
           <strong>${source.name}</strong>
           <div class="source-meta">
             <span>${source.category}</span>
-            <span>${source.preset ? 'preset' : 'custom'}</span>
-            <span>${source.enabled ? 'enabled' : 'disabled'}</span>
+            <span>${source.preset ? 'Preset' : 'Custom'}</span>
+            <span>${source.enabled ? 'Enabled' : 'Disabled'}</span>
           </div>
           <p>${source.url}</p>
           <div class="button-row">
@@ -410,8 +410,11 @@ function renderActions() {
       (action) => `
         <div class="action-item">
           <strong>${action.summary}</strong>
-          <p>Type: ${action.type} | Risk: ${action.risk}</p>
-          <p>Created: ${formatDate(action.createdAt)}</p>
+          <div class="source-meta">
+            <span>${action.type}</span>
+            <span>Risk: ${action.risk}</span>
+            <span>${formatDate(action.createdAt)}</span>
+          </div>
           <div class="button-row">
             <button class="btn btn-primary" data-action-control="confirm" data-action-id="${action.id}">Confirm</button>
             <button class="btn" data-action-control="reject" data-action-id="${action.id}">Reject</button>
